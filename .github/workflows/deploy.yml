@@ -9,6 +9,10 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    
+    # 🌟 核心修复：显式赋予流水线写入权限，彻底解决 Git exit code 128 错误
+    permissions:
+      contents: write
 
     steps:
       # 1. 拉取代码
@@ -40,7 +44,7 @@ jobs:
           strip_components: 1
           overwrite: true
 
-      # 5. 重启服务器服务（如 Nginx 等，按需开启）
+      # 5. 重启服务器服务
       - name: Restart Service
         uses: appleboy/ssh-action@v1.0.3
         with:
