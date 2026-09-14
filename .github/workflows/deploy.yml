@@ -1,5 +1,6 @@
 name: Deploy to Aliyun
 
+# 触发条件：当代码推送到 main 分支时自动执行
 on:
   push:
     branches:
@@ -12,13 +13,13 @@ jobs:
     steps:
       # 1. 拉取代码
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      # 2. 安装 Node.js 20 环境
+      # 2. 安装 Node.js 环境
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: '16'
 
       # 3. 安装依赖并打包构建
       - name: Install and Build
@@ -26,25 +27,16 @@ jobs:
           npm install
           npm run build
 
-      # 4. 🌟 核心改进 1：将 GitHub Secrets 中的私钥安全地注册到系统 ssh-agent 内存中
-      - name: Install SSH Key
-        uses: shimataro/ssh-key-action@v2
+      # 4. 通过 SSH 部署到阿里云服务器
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@master
         with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          port: ${{ secrets.SERVER_PORT }}
           key: ${{ secrets.SSH_KEY }}
-          # 自动把你的阿里云主机加入到已知主机列表（known_hosts），防止出现首次连接交互确认
-          if_key_exists: replace
-
-      # 5. 🌟 核心改进 2：使用 Linux 原生 scp 传输，彻底和第三方插件的 Git 128 报错说再见！
-      - name: Deploy via Native SCP
-        run: |
-          # 1. 登录阿里云服务器，确保目标目录已经存在（防止因目录不存在而报错）
-          ssh -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "mkdir -p /var/www/visual-drag-demo"
-          
-          # 2. 直接使用原生的 scp 命令，把打包好的 dist 目录下的所有文件上传过去
-          # -r 代表递归目录，-P（大写）指定非 22 端口
-          scp -P ${{ secrets.SERVER_PORT }} -r dist/* ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/var/www/visual-drag-demo/
-
-      # 6. 重启服务器服务（使用原生 ssh 命令远程触发）
-      - name: Restart Service
-        run: |
-          ssh -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "echo '文件传输完成，Nginx 目录已更新！'"
+          script: |
+            # 在服务器上创建部署目录（如果不存在）
+            mkdir -p /var/www/visual-drag-demo
+            # 清空旧文件（防止缓存问题）
+            rm -rf /var/www/visual-drag-demo/*
