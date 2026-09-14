@@ -1,6 +1,5 @@
 name: Deploy to Aliyun
 
-# 触发条件：当代码推送到 main 分支时自动执行
 on:
   push:
     branches:
@@ -9,10 +8,6 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    
-    # 🌟 核心修复：显式赋予流水线写入权限，彻底解决 Git exit code 128 错误
-    permissions:
-      contents: write
 
     steps:
       # 1. 拉取代码
@@ -31,27 +26,25 @@ jobs:
           npm install
           npm run build
 
-      # 4. 通过 SSH 上传文件并部署到阿里云服务器
-      - name: Deploy via SSH
-        uses: appleboy/scp-action@v0.1.8
+      # 4. 🌟 核心改进 1：将 GitHub Secrets 中的私钥安全地注册到系统 ssh-agent 内存中
+      - name: Install SSH Key
+        uses: shimataro/ssh-key-action@v2
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SERVER_PORT }}
-          source: "dist/**"
-          target: "/var/www/visual-drag-demo"
-          strip_components: 1
-          overwrite: true
+          # 自动把你的阿里云主机加入到已知主机列表（known_hosts），防止出现首次连接交互确认
+          if_key_exists: replace
 
-      # 5. 重启服务器服务
+      # 5. 🌟 核心改进 2：使用 Linux 原生 scp 传输，彻底和第三方插件的 Git 128 报错说再见！
+      - name: Deploy via Native SCP
+        run: |
+          # 1. 登录阿里云服务器，确保目标目录已经存在（防止因目录不存在而报错）
+          ssh -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "mkdir -p /var/www/visual-drag-demo"
+          
+          # 2. 直接使用原生的 scp 命令，把打包好的 dist 目录下的所有文件上传过去
+          # -r 代表递归目录，-P（大写）指定非 22 端口
+          scp -P ${{ secrets.SERVER_PORT }} -r dist/* ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/var/www/visual-drag-demo/
+
+      # 6. 重启服务器服务（使用原生 ssh 命令远程触发）
       - name: Restart Service
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SERVER_PORT }}
-          script: |
-            echo "部署完成，正在更新服务器..."
-            # 可以在这里添加重启服务命令，如: sudo systemctl restart nginx
+        run: |
+          ssh -p ${{ secrets.SERVER_PORT }} ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "echo '文件传输完成，Nginx 目录已更新！'"
